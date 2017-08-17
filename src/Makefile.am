@@ -48,6 +48,9 @@ stunnel_CPPFLAGS += -DCONFDIR='"$(sysconfdir)/stunnel"'
 # TLS library
 stunnel_LDFLAGS = -L$(SSLDIR)/lib64 -L$(SSLDIR)/lib -lssl -lcrypto
 
+# HTTP / JSON library
+stunnel_LDFLAGS += -ljansson -lcurl
+
 # stunnel3 script
 edit = sed \
 	-e 's|@bindir[@]|$(bindir)|g'

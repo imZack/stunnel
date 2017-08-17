@@ -1253,7 +1253,7 @@ NOEXPORT char *parse_service_option(CMD cmd, SERVICE_OPTIONS *section,
         return NULL; /* OK */
     case CMD_END:
 #ifndef OPENSSL_NO_PSK
-        if(section->psk_keys)
+        if(section->psk_keys || section->psk_url)
             break;
 #endif /* !defined(OPENSSL_NO_PSK) */
 #ifndef OPENSSL_NO_ENGINE
@@ -1285,7 +1285,7 @@ NOEXPORT char *parse_service_option(CMD cmd, SERVICE_OPTIONS *section,
         name_list_append(&section->check_email, arg);
         return NULL; /* OK */
     case CMD_END:
-	if(section->check_email && !section->option.verify_chain && !section->option.verify_peer)
+        if(section->check_email && !section->option.verify_chain && !section->option.verify_peer)
             return "Either \"verifyChain\" or \"verifyPeer\" has to be enabled";
         break;
     case CMD_FREE:
@@ -2243,6 +2243,81 @@ NOEXPORT char *parse_service_option(CMD cmd, SERVICE_OPTIONS *section,
     case CMD_HELP:
         s_log(LOG_NOTICE, "%-22s = secrets for PSK authentication",
             "PSKsecrets");
+        break;
+    }
+
+    /* PSKurl */
+    switch(cmd) {
+    case CMD_BEGIN:
+        section->psk_url=NULL;
+        break;
+    case CMD_EXEC:
+        if(strcasecmp(opt, "PSKurl"))
+            break;
+        section->psk_url=str_dup(arg);
+        if(!section->psk_url)
+            return "Failed to read PSKurl";
+        return NULL; /* OK */
+    case CMD_END:
+        break;
+    case CMD_FREE:
+        str_free(section->psk_url);
+        break;
+    case CMD_DEFAULT:
+        break;
+    case CMD_HELP:
+        s_log(LOG_NOTICE, "%-22s = http endpoint for PSK authentication",
+            "PSKurl");
+        break;
+    }
+
+    /* PSKurlHeaderKey */
+    switch(cmd) {
+    case CMD_BEGIN:
+        section->psk_url_header_key=NULL;
+        break;
+    case CMD_EXEC:
+        if(strcasecmp(opt, "PSKurlHeaderKey"))
+            break;
+        section->psk_url_header_key=str_dup(arg);
+        if(!section->psk_url_header_key)
+            return "Failed to read PSKurlHeaderKey";
+        return NULL; /* OK */
+    case CMD_END:
+        break;
+    case CMD_FREE:
+        str_free(section->psk_url_header_key);
+        break;
+    case CMD_DEFAULT:
+        break;
+    case CMD_HELP:
+        s_log(LOG_NOTICE, "%-22s = http header key for PSK url",
+            "PSKurlHeaderKey");
+        break;
+    }
+
+    /* PSKurlHeaderVal */
+    switch(cmd) {
+    case CMD_BEGIN:
+        section->psk_url_header_val=NULL;
+        break;
+    case CMD_EXEC:
+        if(strcasecmp(opt, "PSKurlHeaderVal"))
+            break;
+        section->psk_url_header_val=str_dup(arg);
+        if(!section->psk_url_header_val)
+            return "Failed to read PSKurlHeaderVal";
+        return NULL; /* OK */
+    case CMD_END:
+        break;
+    case CMD_FREE:
+        str_free(section->psk_url_header_val);
+        break;
+    case CMD_DEFAULT:
+        break;
+    case CMD_HELP:
+        s_log(LOG_NOTICE, "%-22s = http header value for PSK url",
+            "PSKurlHeaderVal");
         break;
     }
 

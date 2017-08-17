@@ -229,6 +229,9 @@ typedef struct service_options_struct {
     char *psk_identity;
     PSK_KEYS *psk_keys, *psk_selected;
     PSK_TABLE psk_sorted;
+    char *psk_url;
+    char *psk_url_header_key;
+    char *psk_url_header_val;
 #endif /* !defined(OPENSSL_NO_PSK) */
 #ifndef OPENSSL_NO_ECDH
     int curve;
@@ -815,6 +818,13 @@ UI_METHOD *UI_stunnel(void);
 #ifdef ICON_IMAGE
 ICON_IMAGE load_icon_default(ICON_TYPE);
 ICON_IMAGE load_icon_file(const char *);
+#endif
+
+#ifndef OPENSSL_NO_PSK
+struct MemoryStruct {
+    char *memory;
+    size_t size;
+};
 #endif
 
 #endif /* defined PROTOTYPES_H */

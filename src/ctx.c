@@ -35,6 +35,8 @@
  *   forward this exception.
  */
 
+#include <curl/curl.h>
+#include <jansson.h>
 #include "common.h"
 #include "prototypes.h"
 
@@ -468,7 +470,7 @@ NOEXPORT int auth_init(SERVICE_OPTIONS *section) {
 
     /* initialize PSK */
 #ifndef OPENSSL_NO_PSK
-    if(section->psk_keys) {
+    if(section->psk_keys || section->psk_url) {
         if(section->option.client)
             SSL_CTX_set_psk_client_callback(section->ctx, psk_client_callback);
         else
@@ -557,6 +559,178 @@ NOEXPORT unsigned psk_client_callback(SSL *ssl, const char *hint,
     return (unsigned)(c->opt->psk_selected->key_len);
 }
 
+#if 0
+NOEXPORT void hexDump (char *desc, void *addr, int len) {
+   int i;
+   unsigned char buff[17];
+   unsigned char *pc = (unsigned char*)addr;
+
+   // Output description if given.
+   if (desc != NULL)
+       printf ("%s:\n", desc);
+
+   if (len == 0) {
+       printf("  ZERO LENGTH\n");
+       return;
+   }
+   if (len < 0) {
+       printf("  NEGATIVE LENGTH: %i\n",len);
+       return;
+   }
+
+   // Process every byte in the data.
+   for (i = 0; i < len; i++) {
+       // Multiple of 16 means new line (with line offset).
+
+       if ((i % 16) == 0) {
+           // Just don't print ASCII for the zeroth line.
+           if (i != 0)
+               printf ("  %s\n", buff);
+
+           // Output the offset.
+           printf ("  %04x ", i);
+       }
+
+       // Now the hex code for the specific character.
+       printf (" %02x", pc[i]);
+
+       // And store a printable ASCII character for later.
+       if ((pc[i] < 0x20) || (pc[i] > 0x7e))
+           buff[i % 16] = '.';
+       else
+           buff[i % 16] = pc[i];
+       buff[(i % 16) + 1] = '\0';
+   }
+
+   // Pad out last line if not exactly 16 characters.
+   while ((i % 16) != 0) {
+       printf ("   ");
+       i++;
+   }
+
+   // And print the final ASCII bit.
+   printf ("  %s\n", buff);
+}
+#endif
+
+NOEXPORT int hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
+{
+   BIGNUM *bn = NULL;
+   int len;
+
+   if(BN_hex2bn(&bn, hex) == 0){
+       if(bn) BN_free(bn);
+       return 0;
+   }
+   if(BN_num_bytes(bn) > bin_max_len){
+       BN_free(bn);
+       return 0;
+   }
+
+   len = BN_bn2bin(bn, bin);
+   BN_free(bn);
+   return len;
+}
+
+NOEXPORT size_t psk_request_callback(void *contents, size_t size,
+    size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+    if(mem->memory == NULL) {
+        /* out of memory! */ 
+        printf("not enough memory (realloc returned NULL)\n");
+        return 0;
+    }
+
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+    return realsize;
+}
+
+NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
+   const char *identity, unsigned max_psk_len) {
+    CURL *curl;
+    CURLcode res;
+    //curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if(!curl) {
+        //curl_global_cleanup();
+        return 0;
+    }
+
+    PSK_KEYS *psk_key = NULL;
+    struct MemoryStruct chunk;
+    chunk.memory = malloc(1);
+    chunk.size = 0;
+
+    /* Setup post paylod & token */
+    char payload[512];
+    char token[512];
+    sprintf(payload, "{\"identity\":\"%s\"}", identity);
+    sprintf(token, "%s: %s", opts->psk_url_header_key, opts->psk_url_header_val);
+
+    /* Setup headers */
+    s_log(LOG_NOTICE, "%s", opts->psk_url);
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "charsets: utf-8");
+    headers = curl_slist_append(headers, token);
+    curl_easy_setopt(curl, CURLOPT_URL, opts->psk_url);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, psk_request_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    res = curl_easy_perform(curl);
+    if(res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+            curl_easy_strerror(res));
+    } else {
+        json_t *root;
+        json_error_t error;
+        json_t *type_obj;
+        const char *type_val;
+        root = json_loads(chunk.memory, 0, &error);
+        if (!root){
+            fprintf(stderr, "error: on line %d: %s\n", error.line, error.text);
+            return 0;
+        }
+    
+        type_obj = json_object_get(root, "psk");
+        if(!json_is_string(type_obj)) {
+            fprintf(stderr, "error: commit type_obj is not a string\n");
+            return 0;
+        }
+
+        unsigned char *key_val = str_alloc(max_psk_len * sizeof(char));
+        if (!key_val) {
+           printf("not enough memory (calloc returned NULL)\n");
+           return 0;
+        }
+    
+        type_val = json_string_value(type_obj);
+        s_log(LOG_NOTICE, "Get Hex PSK: \"%s\"", type_val);
+        psk_key = str_alloc(sizeof(PSK_KEYS));
+        psk_key->identity = (unsigned char *)str_dup(identity);
+        psk_key->key_val = key_val;
+        psk_key->key_len = hex2bin(type_val, psk_key->key_val,
+           max_psk_len);
+        json_decref(root);
+    }
+
+    free(chunk.memory);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    //curl_global_cleanup();
+    return psk_key;
+}
+
 NOEXPORT unsigned psk_server_callback(SSL *ssl, const char *identity,
     unsigned char *psk, unsigned max_psk_len) {
     CLI *c;
@@ -564,7 +738,12 @@ NOEXPORT unsigned psk_server_callback(SSL *ssl, const char *identity,
     size_t len;
 
     c=SSL_get_ex_data(ssl, index_ssl_cli);
-    found=psk_find(&c->opt->psk_sorted, identity);
+    if(c->opt->psk_url) {
+        found=psk_http_request(c->opt, identity, max_psk_len);
+    } else if(c->opt->psk_keys) {
+        found=psk_find(&c->opt->psk_sorted, identity);        
+    }
+
     if(found) {
         len=found->key_len;
     } else {
@@ -577,8 +756,21 @@ NOEXPORT unsigned psk_server_callback(SSL *ssl, const char *identity,
         len=0;
     }
     if(len) {
-        memcpy(psk, found->key_val, len);
-        s_log(LOG_NOTICE, "Key configured for PSK identity \"%s\"", identity);
+       s_log(LOG_NOTICE, "Key configured for PSK identity \"%s\"", identity);
+       if(c->opt->psk_url) {
+           s_log(LOG_NOTICE, "len \"%d\"", len);
+#if 0
+           hexDump("found->key_val", found->key_val, max_psk_len);
+#endif
+           memcpy(psk, found->key_val, len);
+           s_log(LOG_DEBUG, "key_val \"%s\"", found->key_val);
+           s_log(LOG_DEBUG, "PSK \"%s\"", psk);
+           str_free(found->identity);
+           str_free(found->key_val);
+           str_free(found);
+       } else {
+           memcpy(psk, found->key_val, len);
+       }
     } else { /* block identity probes if possible */
         if(max_psk_len>=32 && RAND_bytes(psk, 32)>0) {
             len=32; /* 256 random bits */
