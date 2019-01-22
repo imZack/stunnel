@@ -613,10 +613,10 @@ NOEXPORT void hexDump (char *desc, void *addr, int len) {
 }
 #endif
 
-NOEXPORT int hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
+NOEXPORT unsigned long hex2bin(const char *hex, unsigned char *bin, unsigned bin_max_len)
 {
    BIGNUM *bn = NULL;
-   int len;
+   unsigned long len;
 
    if(BN_hex2bn(&bn, hex) == 0){
        if(bn) BN_free(bn);
@@ -627,7 +627,7 @@ NOEXPORT int hex2bin(const char *hex, unsigned char *bin, int bin_max_len)
        return 0;
    }
 
-   len = BN_bn2bin(bn, bin);
+   len = (unsigned)BN_bn2bin(bn, bin);
    BN_free(bn);
    return len;
 }
@@ -758,7 +758,7 @@ NOEXPORT unsigned psk_server_callback(SSL *ssl, const char *identity,
     if(len) {
        s_log(LOG_NOTICE, "Key configured for PSK identity \"%s\"", identity);
        if(c->opt->psk_url) {
-           s_log(LOG_NOTICE, "len \"%d\"", len);
+           s_log(LOG_NOTICE, "len \"%lu\"", len);
 #if 0
            hexDump("found->key_val", found->key_val, max_psk_len);
 #endif
