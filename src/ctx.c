@@ -785,7 +785,7 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
         psk_key->key_val = key_val;
         //psk_key->key_val = type_val;
         hex2bin(type_val, psk_key->key_val, max_psk_len);
-        psk_key->key_len = max_psk_len;
+        psk_key->key_len = (unsigned int)strlen(type_val)/2;
         //psk_key->key_len = strlen(type_val);
 
         //s_log(LOG_NOTICE, "http psk_key->identity=%s\n", psk_key->identity);
