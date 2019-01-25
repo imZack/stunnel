@@ -83,7 +83,7 @@ NOEXPORT unsigned psk_server_callback(SSL *, const char *,
     unsigned char *, unsigned);
 
 //#ifdef CACHE_PSK
-#define HASH_TABLE_SIZE 50000
+#define HASH_TABLE_SIZE 100000
 struct hsearch_data *ht1;
 //#endif
 
@@ -682,12 +682,12 @@ NOEXPORT PSK_KEYS* psk_hash_table(const char *identity) {
         //   return 0;
         //}
 
-        int i = 0;
+        /*int i = 0;
         s_log(LOG_NOTICE, "psk=");
         for(i = 0 ; i < 32; i++) {
             s_log(LOG_NOTICE, "0x%hhx ", *((char*)(e_result->data)+i));
         }
-        s_log(LOG_NOTICE, "\n");
+        s_log(LOG_NOTICE, "\n");*/
 
 
         psk_key = str_alloc(sizeof(PSK_KEYS));
@@ -697,9 +697,9 @@ NOEXPORT PSK_KEYS* psk_hash_table(const char *identity) {
         //psk_key->key_len = hex2bin(e_result->data, psk_key->key_val, max_psk_len);
         psk_key->key_len = 32;
 
-        s_log(LOG_NOTICE, "psk_key->identity=%s\n", psk_key->identity);
+        //s_log(LOG_NOTICE, "psk_key->identity=%s\n", psk_key->identity);
         //s_log(LOG_NOTICE, "psk_key->key_val=%s\n", psk_key->key_val);
-        s_log(LOG_NOTICE, "psk_key->key_len=%lu\n", psk_key->key_len);
+        //s_log(LOG_NOTICE, "psk_key->key_len=%lu\n", psk_key->key_len);
         return psk_key;
     }
     
@@ -787,17 +787,17 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
         psk_key->key_len = hex2bin(type_val, psk_key->key_val, max_psk_len);
         //psk_key->key_len = strlen(type_val);
 
-        s_log(LOG_NOTICE, "http psk_key->identity=%s\n", psk_key->identity);
+        //s_log(LOG_NOTICE, "http psk_key->identity=%s\n", psk_key->identity);
         //s_log(LOG_NOTICE, "http psk_key->key_val=%s\n", psk_key->key_val);
-        s_log(LOG_NOTICE, "http psk_key->key_len=%lu\n", psk_key->key_len);
+        //s_log(LOG_NOTICE, "http psk_key->key_len=%lu\n", psk_key->key_len);
 
 //#ifdef CACHE_PSK
-        int j = 0;
+        /*int j = 0;
         s_log(LOG_NOTICE, "psk=%s\n", type_val);
         for(j = 0 ; j < psk_key->key_len; j++) {
             s_log(LOG_NOTICE, "0x%hhx ", *((char*)(psk_key->key_val)+j));
         }
-        s_log(LOG_NOTICE, "\n");
+        s_log(LOG_NOTICE, "\n");*/
 
         ENTRY e;
 	    ENTRY *ee;
