@@ -35,13 +35,21 @@
  *   forward this exception.
  */
 
-#define __USE_GNU
-#define _GNU_SOURCE 1
-#include <search.h>
 #include <curl/curl.h>
 #include <jansson.h>
 #include "common.h"
 #include "prototypes.h"
+
+// TODO: integrate this into config.h
+#define CACHE_PSK 1 
+
+#ifdef CACHE_PSK
+#define __USE_GNU
+#define _GNU_SOURCE 1
+#include <search.h>
+#define HASH_TABLE_SIZE 100000
+struct hsearch_data *ht1;
+#endif
 
 SERVICE_OPTIONS *current_section=NULL;
 
@@ -81,11 +89,6 @@ NOEXPORT unsigned psk_client_callback(SSL *, const char *,
     char *, unsigned, unsigned char *, unsigned);
 NOEXPORT unsigned psk_server_callback(SSL *, const char *,
     unsigned char *, unsigned);
-
-//#ifdef CACHE_PSK
-#define HASH_TABLE_SIZE 100000
-struct hsearch_data *ht1;
-//#endif
 
 #endif /* !defined(OPENSSL_NO_PSK) */
 NOEXPORT int load_cert_file(SERVICE_OPTIONS *);
@@ -483,14 +486,14 @@ NOEXPORT int auth_init(SERVICE_OPTIONS *section) {
         if(section->option.client) {
             SSL_CTX_set_psk_client_callback(section->ctx, psk_client_callback);
         } else {
-//#ifdef CACHE_PSK
+#ifdef CACHE_PSK
             ht1 = (struct hsearch_data*)calloc(HASH_TABLE_SIZE, sizeof(struct hsearch_data));
   
             if (hcreate_r(HASH_TABLE_SIZE, ht1) == 0) {
                 printf("cannot create hash table\n");
                 return -1;
             }
-//#endif
+#endif
             SSL_CTX_set_psk_server_callback(section->ctx, psk_server_callback);
         }
     }
@@ -682,6 +685,7 @@ NOEXPORT size_t psk_request_callback(void *contents, size_t size,
     return realsize;
 }
 
+#ifdef CACHE_PSK
 NOEXPORT PSK_KEYS* psk_hash_table(const char *identity) {
     PSK_KEYS *psk_key = NULL;
     ENTRY e;
@@ -689,47 +693,29 @@ NOEXPORT PSK_KEYS* psk_hash_table(const char *identity) {
     e.key = (char*)identity;
 
     if (hsearch_r(e, FIND, &e_result, ht1) > 0) {
-        s_log(LOG_NOTICE, "get PSK from cache key: %s , value: %s .\n", e_result->key, (char *)e_result->data);
-        //unsigned char *key_val = str_alloc(max_psk_len * sizeof(char));
-        //if (!key_val) {
-        //   printf("not enough memory (calloc returned NULL)\n");
-        //   return 0;
-        //}
-
-        /*int i = 0;
-        s_log(LOG_NOTICE, "psk=");
-        for(i = 0 ; i < 32; i++) {
-            s_log(LOG_NOTICE, "0x%hhx ", *((char*)(e_result->data)+i));
-        }
-        s_log(LOG_NOTICE, "\n");*/
-
+        s_log(LOG_DEBUG, "get PSK from cache key: %s .\n", e_result->key);
 
         psk_key = str_alloc(sizeof(PSK_KEYS));
         psk_key->identity = (char*)identity;
-        //psk_key->key_val = key_val;
         psk_key->key_val = e_result->data;
-        //psk_key->key_len = hex2bin(e_result->data, psk_key->key_val, max_psk_len);
         psk_key->key_len = 32;
 
-        //s_log(LOG_NOTICE, "psk_key->identity=%s\n", psk_key->identity);
-        //s_log(LOG_NOTICE, "psk_key->key_val=%s\n", psk_key->key_val);
-        //s_log(LOG_NOTICE, "psk_key->key_len=%lu\n", psk_key->key_len);
+        //s_log(LOG_DEBUG, "psk_key->identity=%s\n", psk_key->identity);
+        //s_log(LOG_DEBUG, "psk_key->key_val=%s\n", psk_key->key_val);
+        //s_log(LOG_DEBUG, "psk_key->key_len=%lu\n", psk_key->key_len);
         return psk_key;
     }
     
-    printf("cannot find entry: %s\n", identity);
+    s_log(LOG_DEBUG, "cannot find entry: %s\n", identity);
     return NULL;
 }
+#endif
 
 NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
    const char *identity, unsigned max_psk_len) {
     CURL *curl;
     CURLcode res;
     PSK_KEYS *psk_key = NULL;
-
-//#ifdef CACHE_PSK
-
-//#endif
 
     //curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
@@ -750,7 +736,7 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
     sprintf(token, "%s: %s", opts->psk_url_header_key, opts->psk_url_header_val);
 
     /* Setup headers */
-    s_log(LOG_NOTICE, "%s", opts->psk_url);
+    s_log(LOG_DEBUG, "%s", opts->psk_url);
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Accept: application/json");
     headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -797,16 +783,9 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
         //psk_key->identity = (unsigned char *)str_dup(identity);
         psk_key->identity = (char*)identity;
         psk_key->key_val = key_val;
-        //psk_key->key_val = type_val;
-        hex2bin(type_val, psk_key->key_val, max_psk_len);
-        psk_key->key_len = (unsigned int)strlen(type_val)/2;
-        //psk_key->key_len = strlen(type_val);
+        psk_key->key_len = hex2bin(type_val, psk_key->key_val, max_psk_len);
 
-        //s_log(LOG_NOTICE, "http psk_key->identity=%s\n", psk_key->identity);
-        //s_log(LOG_NOTICE, "http psk_key->key_val=%s\n", psk_key->key_val);
-        //s_log(LOG_NOTICE, "http psk_key->key_len=%lu\n", psk_key->key_len);
-
-//#ifdef CACHE_PSK
+#ifdef CACHE_PSK
         /*int j = 0;
         s_log(LOG_NOTICE, "psk=%s\n", type_val);
         for(j = 0 ; j < psk_key->key_len; j++) {
@@ -816,12 +795,12 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
 
         ENTRY e;
 	    ENTRY *ee;
-        char *p = calloc(psk_key->key_len, sizeof(char));
+        char *p = calloc(psk_key->key_len, sizeof(char));   /* TODO: free memory before daemon exit */
         memcpy(p, psk_key->key_val, psk_key->key_len);
         e.key = (char *)identity;
         e.data = p;
         hsearch_r(e, ENTER, &ee, ht1);
-//#endif
+#endif
         json_decref(root);
     }
 
@@ -835,13 +814,15 @@ NOEXPORT PSK_KEYS* psk_http_request(const SERVICE_OPTIONS *opts,
 NOEXPORT unsigned psk_server_callback(SSL *ssl, const char *identity,
     unsigned char *psk, unsigned max_psk_len) {
     CLI *c;
-    PSK_KEYS *found;
-    size_t len;
+    PSK_KEYS *found = NULL;
+    size_t len = 0;
     int is_new = 0;
 
     c=SSL_get_ex_data(ssl, index_ssl_cli);
     if(c->opt->psk_url) {
+#ifdef CACHE_PSK
         found=psk_hash_table(identity);
+#endif
         if(found == NULL) {
             found=psk_http_request(c->opt, identity, max_psk_len);
             is_new = 1;
