@@ -631,23 +631,37 @@ NOEXPORT void hexDump (char *desc, void *addr, int len) {
 }
 #endif
 
-NOEXPORT unsigned long hex2bin(const char *hex, unsigned char *bin, unsigned bin_max_len)
+NOEXPORT unsigned hex2bin(const char *hex, unsigned char *bin, unsigned bin_max_len)
 {
    BIGNUM *bn = NULL;
-   unsigned long len;
+   unsigned len;
+   unsigned leading_zero = 0;
+   unsigned start = 0;
+   unsigned i = 0;
+
+   /* Count the number of leading zero */
+   for(i=0; i<strlen(hex); i=i+2) {
+      if(strncmp(hex + i, "00", 2) == 0) {
+         leading_zero++;
+         /* output leading zero to bin */
+         bin[start++] = 0;
+      }else{
+         break;
+      }
+   }
 
    if(BN_hex2bn(&bn, hex) == 0){
        if(bn) BN_free(bn);
        return 0;
    }
-   if(BN_num_bytes(bn) > bin_max_len){
+   if((unsigned)BN_num_bytes(bn) + leading_zero > bin_max_len){
        BN_free(bn);
        return 0;
    }
 
-   len = (unsigned)BN_bn2bin(bn, bin);
+   len = (unsigned)BN_bn2bin(bn, bin + leading_zero);
    BN_free(bn);
-   return len;
+   return len + leading_zero;
 }
 
 NOEXPORT size_t psk_request_callback(void *contents, size_t size,
